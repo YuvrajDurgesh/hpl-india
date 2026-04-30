@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>India Service Network | Engineers & Stock Map</title>
+  <!-- Tailwind CSS + Font Awesome + Google Fonts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    * {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Custom map container radius and shadow */
+    .map-container {
+      border-radius: 1.5rem;
+      overflow: hidden;
+      box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.2);
+      transition: all 0.2s ease;
+    }
+    /* Ripple effect for green stock markers (enhanced) */
+    .ripple-marker {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.6);
+      animation: pulse-green 1.8s infinite;
+    }
+    @keyframes pulse-green {
+      0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      }
+      70% {
+        box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      }
+    }
+    /* Engineer red dot with soft inner glow */
+    .engineer-dot {
+      width: 12px;
+      height: 12px;
+      background: #ef4444;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,240,0.8);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+      transition: transform 0.1s;
+    }
+    /* Custom popup styling */
+    .custom-popup .leaflet-popup-content-wrapper {
+      border-radius: 1rem;
+      background: #1f2937;
+      color: white;
+      font-weight: 500;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    }
+    .custom-popup .leaflet-popup-tip {
+      background: #1f2937;
+    }
+    /* Scrollbar nice */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 10px;
+    }
+    .stats-card {
+      backdrop-filter: blur(2px);
+      transition: all 0.2s;
+    }
+    .legend-card {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(4px);
+      border-radius: 24px;
+    }
+  </style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-50 to-gray-100 antialiased">
+
+  <!-- Main Container -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+    
+    <!-- Header with title & badge -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div>
+        <div class="flex items-center gap-2">
+          <i class="fas fa-map-marked-alt text-emerald-600 text-3xl"></i>
+          <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-gray-800">HPL <span class="text-emerald-600">Service Network</span></h1>
+        </div>
+        <p class="text-gray-500 text-sm mt-1 flex items-center gap-1"><i class="fas fa-wrench"></i> Engineers & real-time stock availability</p>
+      </div>
+      <div class="flex gap-3">
+        <div class="bg-white px-4 py-2 rounded-2xl shadow-sm flex items-center gap-2">
+          <i class="fas fa-users text-red-500"></i>
+          <span class="font-semibold text-gray-700" id="engineerCount">0</span>
+          <span class="text-gray-500 text-sm">Engineers</span>
+        </div>
+        <div class="bg-white px-4 py-2 rounded-2xl shadow-sm flex items-center gap-2">
+          <i class="fas fa-boxes text-emerald-500"></i>
+          <span class="font-semibold text-gray-700" id="stockCount">0</span>
+          <span class="text-gray-500 text-sm">Stock locations</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Section with rounded corners -->
+    <div class="map-container mb-6 shadow-xl">
+      <div id="map" style="height: 500px; width: 100%; background: #e9f0f5;"></div>
+    </div>
+
+    <!-- Legend & Stats row: Better UI with Tailwind -->
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div class="legend-card inline-flex flex-wrap gap-5 px-5 py-2.5 shadow-sm border border-gray-200">
+        <div class="flex items-center gap-2">
+          <div class="w-3.5 h-3.5 bg-red-500 rounded-full ring-2 ring-red-100"></div>
+          <span class="text-sm font-medium text-gray-700">Service Engineers</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-3.5 h-3.5 bg-emerald-500 rounded-full animate-pulse ring-2 ring-emerald-100"></div>
+          <span class="text-sm font-medium text-gray-700">Stock Available (green ripple)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <i class="fas fa-map-pin text-indigo-500 text-sm"></i>
+          <span class="text-sm text-gray-500">Click on any marker → details</span>
+        </div>
+      </div>
+      <div class="text-xs text-gray-400 bg-white/60 rounded-full px-4 py-1.5 shadow-sm">
+        <i class="fas fa-charging-station mr-1"></i> Updated stock across 23+ cities
+      </div>
+    </div>
+
+    <!-- Quick Insights grid: Engineers & Stock summary (dynamic) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-2">
+      <!-- Engineers summary card -->
+      <div class="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition">
+        <div class="bg-gradient-to-r from-red-50 to-white px-5 py-3 border-b border-red-100">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-user-cog text-red-500 text-lg"></i>
+            <h3 class="font-bold text-gray-800">👨‍🔧 Field Engineers</h3>
+          </div>
+        </div>
+        <div class="p-4 max-h-64 overflow-y-auto custom-scroll">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="engineerList">
+            <!-- dynamic engineer list injected -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Stock availability card -->
+      <div class="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition">
+        <div class="bg-gradient-to-r from-emerald-50 to-white px-5 py-3 border-b border-emerald-100">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-warehouse text-emerald-600 text-lg"></i>
+            <h3 class="font-bold text-gray-800">📦 Stock Availability Centers</h3>
+          </div>
+        </div>
+        <div class="p-4 max-h-64 overflow-y-auto">
+          <div class="flex flex-wrap gap-2" id="stockList">
+            <!-- dynamic stock chips -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center text-xs text-gray-400 mt-8 pb-4">
+      <i class="far fa-copyright"></i> HPL India • Real-time engineer & inventory mapping
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    // --------------------------------------------------------------
+    // UPDATED DATA: Stocks (23+ cities from given list)
+    // Stock Available cities as per requirement:
+    const rawStockCities = [
+      "Mumbai", "Nagpur", "Pune", "Patna", "Raipur", "Ranchi", "Vadodara", "Vijayawada",
+      "Ahmedabad", "Bengaluru", "Chennai", "Cochin", "Bhubaneswar", "Dehradun", "Guwahati",
+      "Indore", "Kolkata", "Lucknow", "Hyderabad", "Jaipur", "Jammu", "Chandigarh"
+    ];
+    
+    // Geo-coordinates mapping for major Indian cities (accurate enough for visualization)
+    const cityCoordinates = {
+      "Mumbai": [19.0760, 72.8777],
+      "Nagpur": [21.1458, 79.0882],
+      "Pune": [18.5204, 73.8567],
+      "Patna": [25.5941, 85.1376],
+      "Raipur": [21.2514, 81.6296],
+      "Ranchi": [23.3441, 85.3096],
+      "Vadodara": [22.3072, 73.1812],
+      "Vijayawada": [16.5062, 80.6480],
+      "Ahmedabad": [23.0225, 72.5714],
+      "Bengaluru": [12.9716, 77.5946],
+      "Chennai": [13.0827, 80.2707],
+      "Cochin": [9.9312, 76.2673],
+      "Bhubaneswar": [20.2961, 85.8245],
+      "Dehradun": [30.3165, 78.0322],
+      "Guwahati": [26.1445, 91.7362],
+      "Indore": [22.7196, 75.8577],
+      "Kolkata": [22.5726, 88.3639],
+      "Lucknow": [26.8467, 80.9462],
+      "Hyderabad": [17.3850, 78.4867],
+      "Jaipur": [26.9124, 75.7873],
+      "Jammu": [32.7266, 74.8570],
+      "Chandigarh": [30.7333, 76.7794]
+    };
+    
+    // Fallback for any missing (should not happen)
+    const getStockLocations = () => {
+      return rawStockCities.map(city => {
+        let coords = cityCoordinates[city];
+        if (!coords) {
+          // approximate fallback for unexpected city (rare)
+          coords = [23.5, 80.0];
+        }
+        return { city: city, lat: coords[0], lng: coords[1] };
+      });
+    };
+    
+    // Service engineers updated array (as per requirement with correct names & city mapping)
+    const serviceEngineers = [
+      { name: "Amit", state: "Haryana", city: "Gurugram" },
+      { name: "Anand Kumar Yadav", state: "Uttar Pradesh", city: "Noida" },
+      { name: "Himanshu", state: "Haryana", city: "Sonipat" },
+      { name: "Shyam Kumar", state: "Delhi", city: "Delhi" },
+      { name: "Kamalpreet Singh", state: "Punjab", city: "Patiala" },
+      { name: "Kuldeep Singh", state: "Rajasthan", city: null },
+      { name: "R.K Singh", state: "Uttar Pradesh", city: "Kanpur" },
+      { name: "Subhasish Mandal", state: "West Bengal", city: "Kolkata" },
+      { name: "Sanjit Kumar Sharma", state: "Assam", city: "Guwahati" },
+      { name: "Samarendra Pradhan", state: "Odisha", city: "Bhubaneswar" },
+      { name: "Harish DM", state: "Karnataka", city: "Bengaluru" },
+      { name: "Chirag Darji", state: "Gujarat", city: "Vadodara" },
+      { name: "Mukesh", state: "Gujarat", city: "Ahmedabad" },
+      { name: "Nandesh Krishna More", state: "Maharashtra", city: "Mumbai" },
+      { name: "Namdeo Thakre", state: "Maharashtra", city: "Pune" },
+      { name: "Manishankar Nishad", state: "Chhattisgarh", city: "Raipur" },
+      { name: "Sivaji Meka", state: "Telangana", city: "Hyderabad" }
+    ];
+    
+    // Map city names to coordinates for engineers (using cityCoordinates + extra mapping)
+    const engineerCoordMap = {
+      "Gurugram": [28.4595, 77.0266],
+      "Noida": [28.5355, 77.3910],
+      "Sonipat": [28.9947, 77.0172],
+      "Delhi": [28.7041, 77.1025],
+      "Patiala": [30.3398, 76.3869],
+      "Kanpur": [26.4499, 80.3319],
+      "Kolkata": [22.5726, 88.3639],
+      "Guwahati": [26.1445, 91.7362],
+      "Bhubaneswar": [20.2961, 85.8245],
+      "Bengaluru": [12.9716, 77.5946],
+      "Vadodara": [22.3072, 73.1812],
+      "Ahmedabad": [23.0225, 72.5714],
+      "Mumbai": [19.0760, 72.8777],
+      "Pune": [18.5204, 73.8567],
+      "Raipur": [21.2514, 81.6296],
+      "Hyderabad": [17.3850, 78.4867]
+    };
+    
+    // For engineers with city null (Kuldeep Singh -> Rajasthan state approximate center: Jaipur)
+    // we assign fallback coordinate using state approx
+    const getEngineerCoordinates = (eng) => {
+      if (eng.city && engineerCoordMap[eng.city]) {
+        return engineerCoordMap[eng.city];
+      }
+      // fallback: Kuldeep Singh from Rajasthan, default to Jaipur
+      if (eng.name === "Kuldeep Singh" && eng.state === "Rajasthan") {
+        return [26.9124, 75.7873]; // Jaipur coords
+      }
+      // generic fallback if city not found but state known - approximate central coords for state
+      if (eng.state === "Rajasthan") return [26.9124, 75.7873];
+      if (eng.state === "Uttar Pradesh") return [26.8467, 80.9462];
+      if (eng.state === "Maharashtra") return [19.0760, 72.8777];
+      if (eng.state === "Gujarat") return [23.0225, 72.5714];
+      if (eng.state === "Karnataka") return [12.9716, 77.5946];
+      if (eng.state === "West Bengal") return [22.5726, 88.3639];
+      if (eng.state === "Assam") return [26.1445, 91.7362];
+      if (eng.state === "Odisha") return [20.2961, 85.8245];
+      if (eng.state === "Chhattisgarh") return [21.2514, 81.6296];
+      if (eng.state === "Telangana") return [17.3850, 78.4867];
+      if (eng.state === "Punjab") return [30.7333, 76.7794];
+      if (eng.state === "Haryana") return [29.0588, 76.0856];
+      if (eng.state === "Delhi") return [28.7041, 77.1025];
+      return [20.5937, 78.9629]; // default center India
+    };
+    
+    // Build complete engineers array with lat/lng
+    const engineersData = serviceEngineers.map(eng => {
+      const [lat, lng] = getEngineerCoordinates(eng);
+      const locationName = eng.city || eng.state;
+      return {
+        name: eng.name,
+        state: eng.state,
+        city: eng.city,
+        displayLocation: locationName,
+        lat: lat,
+        lng: lng
+      };
+    });
+    
+    // Stock location data with coordinates
+    const stocksData = getStockLocations();
+  
+    // Initialize Map (centered on India)
+    const map = L.map('map').setView([22.5, 78.5], 5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> & CartoDB',
+      subdomains: 'abcd',
+      maxZoom: 18,
+      minZoom: 4
+    }).addTo(map);
+    
+    // Custom Icons: Engineer red dot, Stock rippling green
+    const engineerIcon = L.divIcon({
+      className: 'custom-engineer-icon',
+      html: '<div class="engineer-dot" style="width:12px;height:12px;background:#ef4444;border-radius:50%;box-shadow:0 0 0 2px white;"></div>',
+      iconSize: [12, 12],
+      popupAnchor: [0, -8]
+    });
+    
+    const stockIcon = L.divIcon({
+      className: 'custom-stock-icon',
+      html: '<div class="ripple-marker"></div>',
+      iconSize: [14, 14],
+      popupAnchor: [0, -8]
+    });
+    
+    // Store markers for any further usage
+    const engineerMarkers = [];
+    
+    // Add engineers to map with beautiful popups
+    engineersData.forEach(eng => {
+      const popupContent = `
+        <div class="text-sm font-medium" style="min-width: 160px;">
+          <div class="flex items-center gap-2 border-b border-gray-600 pb-1 mb-1">
+            <i class="fas fa-user-gear text-red-400"></i>
+            <span class="font-bold text-white">${eng.name}</span>
+          </div>
+          <div class="text-gray-200 text-xs space-y-1">
+            <div><i class="fas fa-map-marker-alt mr-1 w-3"></i> ${eng.displayLocation || eng.state}</div>
+            <div><i class="fas fa-building mr-1 w-3"></i> ${eng.state}</div>
+            <div><i class="fas fa-tools mr-1"></i> Service engineer</div>
+          </div>
+        </div>
+      `;
+      const marker = L.marker([eng.lat, eng.lng], { icon: engineerIcon })
+        .bindPopup(popupContent, { className: 'custom-popup' })
+        .addTo(map);
+      engineerMarkers.push(marker);
+    });
+    
+    // Add stock markers (ripple effect)
+    stocksData.forEach(stock => {
+      const popupStock = `
+        <div class="text-sm font-medium" style="min-width: 150px;">
+          <div class="flex items-center gap-2 border-b border-green-700 pb-1 mb-1">
+            <i class="fas fa-check-circle text-emerald-400"></i>
+            <span class="font-bold text-white">${stock.city}</span>
+          </div>
+          <div class="text-emerald-100 text-xs">
+            ✅ Stock available ready for dispatch
+          </div>
+          <div class="text-gray-300 text-[11px] mt-1"><i class="fas fa-warehouse"></i> Inventory ready</div>
+        </div>
+      `;
+      L.marker([stock.lat, stock.lng], { icon: stockIcon })
+        .bindPopup(popupStock, { className: 'custom-popup' })
+        .addTo(map);
+    });
+    
+    // Update UI counters and lists with Tailwind styling
+    const engineerCountSpan = document.getElementById('engineerCount');
+    const stockCountSpan = document.getElementById('stockCount');
+    const engineerListDiv = document.getElementById('engineerList');
+    const stockListDiv = document.getElementById('stockList');
+    
+    if (engineerCountSpan) engineerCountSpan.innerText = engineersData.length;
+    if (stockCountSpan) stockCountSpan.innerText = stocksData.length;
+    
+    // Populate engineers list elegantly
+    engineersData.forEach(eng => {
+      const locationText = eng.city ? `${eng.city}, ${eng.state}` : eng.state;
+      const card = document.createElement('div');
+      card.className = 'bg-gray-50 rounded-xl p-2 flex items-center gap-2 border border-gray-100 shadow-sm hover:shadow-md transition-all';
+      card.innerHTML = `
+        <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+        <div class="flex-1">
+          <p class="font-semibold text-gray-800 text-sm">${eng.name}</p>
+          <p class="text-xs text-gray-500 flex items-center gap-1"><i class="fas fa-location-dot text-gray-400"></i> ${locationText}</p>
+        </div>
+        <i class="fas fa-microchip text-gray-400 text-xs"></i>
+      `;
+      engineerListDiv.appendChild(card);
+    });
+    
+    // Populate stock list with badges (beautiful chip design)
+    stocksData.forEach(stock => {
+      const chip = document.createElement('div');
+      chip.className = 'bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 text-sm font-medium text-emerald-800 flex items-center gap-1.5 shadow-sm hover:shadow transition';
+      chip.innerHTML = `<i class="fas fa-map-pin text-emerald-500 text-xs"></i> ${stock.city}`;
+      stockListDiv.appendChild(chip);
+    });
+    
+    // Additional tweaks: add subtle 'zoom to fit' bounds to show all markers
+    const allLatLngs = [...engineersData.map(e => [e.lat, e.lng]), ...stocksData.map(s => [s.lat, s.lng])];
+    if (allLatLngs.length) {
+      const bounds = L.latLngBounds(allLatLngs);
+      map.fitBounds(bounds.pad(0.3));
+    }
+    
+    // Add a beautiful scale and attribution refinements
+    L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+    
+    // Custom legend addition on map (optional minimalist), but we already have external legend; but add a floating tiny indicator?
+    // ---- Additional micro interaction: show engineer total hover? not needed - but overall complete
+    
+    // Fix for potential marker clustering ripple z-index: ensure proper display
+    // Also override any css conflict for leaflet popups
+    const style = document.createElement('style');
+    style.textContent = `
+      .leaflet-popup-content-wrapper {
+        background: #1e293b !important;
+        color: #f1f5f9 !important;
+        border-radius: 18px !important;
+        box-shadow: 0 12px 24px rgba(0,0,0,0.3) !important;
+      }
+      .leaflet-popup-tip {
+        background: #1e293b !important;
+      }
+      .custom-popup .leaflet-popup-content {
+        margin: 8px 12px !important;
+      }
+      .ripple-marker {
+        background: #10b981;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        animation: ripple-green 1.5s infinite;
+        box-shadow: 0 0 0 2px white;
+      }
+      @keyframes ripple-green {
+        0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
+        70% { box-shadow: 0 0 0 12px rgba(16,185,129,0); }
+        100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+      }
+      .engineer-dot {
+        background: #ef4444;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid white;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      }
+      .custom-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .custom-scroll::-webkit-scrollbar-track {
+        background: #eef2ff;
+        border-radius: 10px;
+      }
+      .custom-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+      }
+    `;
+    document.head.appendChild(style);
+  </script>
+</body>
+</html>
